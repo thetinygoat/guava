@@ -6,17 +6,17 @@
 
 typedef struct GuavaBackend {
     int kqueue_fd;
-    struct kevent* events;
+    struct kevent *events;
 } GuavaBackend;
 
-static int guava_initialize_backend(GuavaLoop* loop) {
+static int guava_initialize_backend(GuavaLoop *loop) {
     int kqueue_fd = kqueue();
 
     if (kqueue_fd == -1) {
         return -1;
     }
 
-    GuavaBackend* backend = malloc(sizeof(GuavaBackend));
+    GuavaBackend *backend = malloc(sizeof(GuavaBackend));
     if (backend == NULL) {
         close(kqueue_fd);
         return -1;
@@ -33,8 +33,8 @@ static int guava_initialize_backend(GuavaLoop* loop) {
     return 0;
 }
 
-static int create_backend_fd_event(GuavaLoop* loop, int fd, int mask) {
-    GuavaBackend* backend = loop->backend;
+static int create_backend_fd_event(GuavaLoop *loop, int fd, int mask) {
+    GuavaBackend *backend = loop->backend;
     struct kevent event;
 
     if (mask & GUAVA_READABLE) {
@@ -54,14 +54,14 @@ static int create_backend_fd_event(GuavaLoop* loop, int fd, int mask) {
     return 0;
 }
 
-static int backend_poll(GuavaLoop* loop) {
-    GuavaBackend* backend = loop->backend;
+static int backend_poll(GuavaLoop *loop) {
+    GuavaBackend *backend = loop->backend;
     struct timespec t;
     t.tv_sec = 1;
     int n = kevent(backend->kqueue_fd, NULL, 0, backend->events, loop->fd_events_set_size, &t);
 
     for (int i = 0; i < n; i++) {
-        struct kevent* event = backend->events + i;
+        struct kevent *event = backend->events + i;
         loop->fired_fd_events[i].fd = event->ident;
         if (event->filter & EVFILT_READ) {
             loop->fired_fd_events[i].mask = GUAVA_READABLE;
@@ -75,8 +75,8 @@ static int backend_poll(GuavaLoop* loop) {
     return n;
 }
 
-static void delete_backend(GuavaLoop* loop) {
-    GuavaBackend* backend = loop->backend;
+static void delete_backend(GuavaLoop *loop) {
+    GuavaBackend *backend = loop->backend;
     close(backend->kqueue_fd);
     free(backend->events);
     free(backend);

@@ -1,4 +1,5 @@
 #include "guava.h"
+
 #include <stdlib.h>
 #include <time.h>
 
@@ -25,8 +26,6 @@ GuavaLoop *guava_create_loop(int set_size) {
         free(loop);
         return NULL;
     }
-
-
 
     //   prefill the fd events with GUAVA_NOOP mask, so that they won't be
     //   processed
@@ -149,7 +148,6 @@ static void process_time_events(GuavaLoop *loop) {
 static int process_events(GuavaLoop *loop) {
     int n = backend_poll(loop);
     if (n < 0) return n;
-
 
     for (int i = 0; i < n; i++) {
         GuavaFiredEvent *fe = &loop->fired_fd_events[i];
