@@ -1,17 +1,17 @@
 #include "guava.h"
-
-#include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
 
 #if defined(__APPLE__)
 #include "guava_kqueue.c"
 #else
+
 #include "guava_poll.c"
+
 #endif
 
-GuavaLoop* guava_create_loop(int set_size) {
-    GuavaLoop* loop = malloc(sizeof(*loop));
+GuavaLoop *guava_create_loop(int set_size) {
+    GuavaLoop *loop = malloc(sizeof(*loop));
     if (loop == NULL) {
         return NULL;
     }
@@ -48,7 +48,7 @@ GuavaLoop* guava_create_loop(int set_size) {
     return loop;
 }
 
-void guava_delete_loop(GuavaLoop* loop) {
+void guava_delete_loop(GuavaLoop *loop) {
     loop->running = 0;
     delete_backend(loop);
     free(loop->fd_events);
@@ -56,7 +56,7 @@ void guava_delete_loop(GuavaLoop* loop) {
     free(loop);
 }
 
-int guava_create_fd_event(GuavaLoop* loop, int fd, int mask, void* data, void* callback) {
+int guava_create_fd_event(GuavaLoop *loop, int fd, int mask, void *data, void *callback) {
     int retval = create_backend_fd_event(loop, fd, mask);
     if (retval < 0) {
         return retval;
@@ -80,8 +80,8 @@ static long get_monotonic_millis() {
     return t.tv_sec * 1000;
 }
 
-int guava_create_time_event(GuavaLoop* loop, long millis, void* data, time_callback* callback) {
-    GuavaTimeEvent* event = malloc(sizeof(GuavaTimeEvent));
+int guava_create_time_event(GuavaLoop *loop, long millis, void *data, time_callback *callback) {
+    GuavaTimeEvent *event = malloc(sizeof(GuavaTimeEvent));
     if (event == NULL) {
         return -1;
     }
@@ -106,16 +106,16 @@ int guava_create_time_event(GuavaLoop* loop, long millis, void* data, time_callb
     return event->id;
 }
 
-static void process_time_events(GuavaLoop* loop) {
+static void process_time_events(GuavaLoop *loop) {
     if (loop->time_events == NULL) return;
 
     long now = get_monotonic_millis();
-    GuavaTimeEvent* te = loop->time_events;
+    GuavaTimeEvent *te = loop->time_events;
     long max_id = loop->next_time_event_id - 1;
     while (te != NULL) {
         // delete the event if it is scheduled to be deleted
         if (te->id == GUAVA_DELETED_EVENT_ID) {
-            GuavaTimeEvent* next = te->next;
+            GuavaTimeEvent *next = te->next;
             if (te->prev) {
                 te->prev->next = te->next;
             } else {
@@ -146,13 +146,14 @@ static void process_time_events(GuavaLoop* loop) {
     }
 }
 
-static int process_events(GuavaLoop* loop) {
+static int process_events(GuavaLoop *loop) {
     int n = backend_poll(loop);
     if (n < 0) return n;
 
+
     for (int i = 0; i < n; i++) {
-        GuavaFiredEvent* fe = &loop->fired_fd_events[i];
-        GuavaFdEvent* event = &loop->fd_events[fe->fd];
+        GuavaFiredEvent *fe = &loop->fired_fd_events[i];
+        GuavaFdEvent *event = &loop->fd_events[fe->fd];
 
         if ((event->mask & GUAVA_READABLE) || (event->mask & GUAVA_WRITABLE)) {
             event->callback(loop, event->fd, event->mask, event->data);
@@ -164,11 +165,9 @@ static int process_events(GuavaLoop* loop) {
     return n;
 }
 
-void guava_start_loop(GuavaLoop* loop) {
+void guava_start_loop(GuavaLoop *loop) {
     loop->running = 1;
     while (loop->running) {
         process_events(loop);
     }
 }
-
-apt-get -y install nginx php8.2-fpm php8.2-cgi php8.2-xml php8.2-sqlite3 php8.2-intl apache2-utils
