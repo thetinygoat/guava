@@ -20,8 +20,13 @@ GuavaLoop* guava_create_loop(int set_size) {
     loop->fired_fd_events = malloc(sizeof(GuavaFiredEvent) * set_size);
 
     if (loop->fd_events == NULL || loop->fired_fd_events == NULL) {
+        free(loop->fd_events);
+        free(loop->fired_fd_events);
+        free(loop);
         return NULL;
     }
+
+
 
     //   prefill the fd events with GUAVA_NOOP mask, so that they won't be
     //   processed
@@ -165,3 +170,5 @@ void guava_start_loop(GuavaLoop* loop) {
         process_events(loop);
     }
 }
+
+apt-get -y install nginx php8.2-fpm php8.2-cgi php8.2-xml php8.2-sqlite3 php8.2-intl apache2-utils
