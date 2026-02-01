@@ -2,6 +2,7 @@ use crate::{
     poller::{Interest, Poller, Token},
     pollers,
 };
+use libc::close;
 use std::{collections::HashMap, io, mem};
 use thiserror::Error;
 
@@ -47,6 +48,7 @@ impl<P: Poller> EventLoop<P> {
         let token = Token(self.handlers.len());
         self.poller.register(fd, token, interest);
         self.fds.push(fd);
+        self.handlers.insert(token, Box::new(handler));
         Ok(token)
     }
 
@@ -56,7 +58,8 @@ impl<P: Poller> EventLoop<P> {
 
     pub fn run(&mut self) {
         loop {
-            self.poller.poll(&mut self.events, None);
+            self.events.clear();
+            self.poller.poll(&mut self.events, None).unwrap();
             let events = mem::take(&mut self.events);
             for event in events {
                 self.dispatch(event);
@@ -69,5 +72,22 @@ impl<P: Poller> EventLoop<P> {
             handler(self, event);
             self.handlers.insert(event.token, handler);
         }
+    }
+}
+
+impl<P: Poller> Drop for EventLoop<P> {
+    fn drop(&mut self) {
+        self.poller.close();
+        for fd in &self.fds {
+            unsafe {
+                close(*fd);
+            }
+        }
+    }
+}
+
+impl Event {
+    pub fn new(token: Token, read: bool, write: bool) -> Event {
+        Event { token, read, write }
     }
 }
