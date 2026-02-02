@@ -1,4 +1,5 @@
 use crate::poller::{Interest, Poller};
+use libc::close;
 use std::io;
 use thiserror::Error;
 
@@ -22,6 +23,9 @@ pub enum EventLoopError {
 
     #[error("Too many file descriptors")]
     TooManyFds,
+
+    #[error("Invalid file descriptor")]
+    InvalidFd,
 }
 
 impl<P: Poller> EventLoop<P> {
@@ -46,12 +50,38 @@ impl<P: Poller> EventLoop<P> {
     where
         C: FnMut(&mut EventLoop<P>, Event) + 'static,
     {
-        if fd < 0 || fd as usize >= self.set_size {
+        if fd < 0 {
+            return Err(EventLoopError::InvalidFd);
+        }
+        if fd as usize >= self.set_size {
             return Err(EventLoopError::TooManyFds);
         }
 
         self.poller.register(fd, interest);
         self.io_events[fd as usize] = Some(Box::new(callback));
+
+        Ok(())
+    }
+
+    pub fn remove_fd(&mut self, fd: i32, interest: Interest) -> Result<(), EventLoopError> {
+        if fd < 0 || fd as usize >= self.set_size {
+            return Err(EventLoopError::InvalidFd);
+        }
+        if self.io_events[fd as usize].is_none() {
+            return Err(EventLoopError::InvalidFd);
+        }
+
+        self.poller.deregister(fd, interest);
+        self.io_events[fd as usize] = None;
+
+        Ok(())
+    }
+
+    pub fn close_fd(&mut self, fd: i32, interest: Interest) -> Result<(), EventLoopError> {
+        self.remove_fd(fd, interest)?;
+        unsafe {
+            close(fd);
+        }
 
         Ok(())
     }
