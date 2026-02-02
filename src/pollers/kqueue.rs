@@ -1,9 +1,9 @@
 use crate::{
     event_loop::Event,
-    poller::{Interest, Poller, PollerError, Token},
+    poller::{Interest, Poller, PollerError},
 };
 use libc::{self, EV_ADD, EV_DELETE, EV_ENABLE, EVFILT_READ, EVFILT_WRITE, close, kevent, kqueue};
-use std::{mem, os::raw::c_void, ptr};
+use std::{mem, ptr};
 
 pub struct KqueuePoller {
     fd: i32,
@@ -28,12 +28,7 @@ impl KqueuePoller {
 }
 
 impl Poller for KqueuePoller {
-    fn register(
-        &mut self,
-        fd: i32,
-        token: crate::poller::Token,
-        interest: crate::poller::Interest,
-    ) {
+    fn register(&mut self, fd: i32, interest: crate::poller::Interest) {
         match interest {
             Interest::READ => {
                 self.change_list.push(kevent {
@@ -42,7 +37,7 @@ impl Poller for KqueuePoller {
                     flags: EV_ADD | EV_ENABLE,
                     fflags: 0,
                     data: 0,
-                    udata: token.0 as *mut c_void,
+                    udata: ptr::null_mut(),
                 });
             }
             Interest::WRITE => {
@@ -52,7 +47,7 @@ impl Poller for KqueuePoller {
                     flags: EV_ADD | EV_ENABLE,
                     fflags: 0,
                     data: 0,
-                    udata: token.0 as *mut c_void,
+                    udata: ptr::null_mut(),
                 });
             }
             Interest::READ_WRITE => {
@@ -62,7 +57,7 @@ impl Poller for KqueuePoller {
                     flags: EV_ADD | EV_ENABLE,
                     fflags: 0,
                     data: 0,
-                    udata: token.0 as *mut c_void,
+                    udata: ptr::null_mut(),
                 });
                 self.change_list.push(kevent {
                     ident: fd as usize,
@@ -70,7 +65,7 @@ impl Poller for KqueuePoller {
                     flags: EV_ADD | EV_ENABLE,
                     fflags: 0,
                     data: 0,
-                    udata: token.0 as *mut c_void,
+                    udata: ptr::null_mut(),
                 });
             }
             _ => unreachable!(),
@@ -123,7 +118,7 @@ impl Poller for KqueuePoller {
 
     fn poll(
         &mut self,
-        out: &mut Vec<crate::event_loop::Event>,
+        out: &mut Vec<Option<Event>>,
         timeout: Option<std::time::Duration>,
     ) -> Result<(), PollerError> {
         let nev = unsafe {
@@ -145,12 +140,11 @@ impl Poller for KqueuePoller {
 
         if nev > 0 {
             for ev in &self.event_list[..nev as usize] {
-                let token = Token(ev.udata as usize);
-
+                let fd = ev.ident;
                 if ev.filter == EVFILT_READ {
-                    out.push(Event::new(token, true, false));
+                    out[fd] = Some(Event::new(fd, Interest::READ))
                 } else if ev.filter == EVFILT_WRITE {
-                    out.push(Event::new(token, false, true));
+                    out[fd] = Some(Event::new(fd, Interest::WRITE))
                 }
             }
         }

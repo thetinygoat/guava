@@ -1,55 +1,59 @@
-use crate::{
-    poller::{Interest, Poller, Token},
-    pollers,
-};
-use libc::close;
-use std::{collections::HashMap, io, mem};
+use crate::poller::{Interest, Poller};
+use std::io;
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy)]
 pub struct Event {
-    token: Token,
-    read: bool,
-    write: bool,
+    fd: usize,
+    interest: Interest,
 }
 
 pub struct EventLoop<P: Poller> {
     poller: P,
-    fds: Vec<i32>,
-    events: Vec<Event>,
-    handlers: HashMap<Token, Box<dyn FnMut(&mut EventLoop<P>, Event) + 'static>>,
+    fired_io_events: Vec<Option<Event>>,
+    io_events: Vec<Option<Box<dyn FnMut(&mut EventLoop<P>, Event) + 'static>>>,
+    set_size: usize,
 }
 
 #[derive(Error, Debug)]
 pub enum EventLoopError {
     #[error(transparent)]
     Io(#[from] io::Error),
+
+    #[error("Too many file descriptors")]
+    TooManyFds,
 }
 
 impl<P: Poller> EventLoop<P> {
-    pub fn new(poller: P) -> Self {
+    pub fn new(poller: P, set_size: usize) -> Self {
+        let mut io_events = Vec::with_capacity(set_size);
+        io_events.resize_with(set_size, || None);
+        let fired_io_events = vec![None; set_size];
         EventLoop {
             poller,
-            fds: Vec::with_capacity(1024),
-            events: Vec::with_capacity(256),
-            handlers: HashMap::with_capacity(1024),
+            io_events: io_events,
+            fired_io_events,
+            set_size,
         }
     }
 
-    pub fn add_fd<F>(
+    pub fn add_fd<C>(
         &mut self,
         fd: i32,
         interest: Interest,
-        handler: F,
-    ) -> Result<Token, EventLoopError>
+        callback: C,
+    ) -> Result<(), EventLoopError>
     where
-        F: FnMut(&mut EventLoop<P>, Event) + 'static,
+        C: FnMut(&mut EventLoop<P>, Event) + 'static,
     {
-        let token = Token(self.handlers.len());
-        self.poller.register(fd, token, interest);
-        self.fds.push(fd);
-        self.handlers.insert(token, Box::new(handler));
-        Ok(token)
+        if fd < 0 || fd as usize >= self.set_size {
+            return Err(EventLoopError::TooManyFds);
+        }
+
+        self.poller.register(fd, interest);
+        self.io_events[fd as usize] = Some(Box::new(callback));
+
+        Ok(())
     }
 
     pub fn add_timer(&mut self) {
@@ -58,19 +62,21 @@ impl<P: Poller> EventLoop<P> {
 
     pub fn run(&mut self) {
         loop {
-            self.events.clear();
-            self.poller.poll(&mut self.events, None).unwrap();
-            let events = mem::take(&mut self.events);
-            for event in events {
-                self.dispatch(event);
+            self.fired_io_events.fill(None);
+            self.poller.poll(&mut self.fired_io_events, None).unwrap();
+            for i in 0..self.set_size {
+                let maybe_event = self.fired_io_events[i];
+                if let Some(event) = maybe_event {
+                    self.dispatch(event);
+                }
             }
         }
     }
 
     fn dispatch(&mut self, event: Event) {
-        if let Some(mut handler) = self.handlers.remove(&event.token) {
-            handler(self, event);
-            self.handlers.insert(event.token, handler);
+        if let Some(mut callback) = self.io_events[event.fd as usize].take() {
+            callback(self, event);
+            self.io_events[event.fd as usize] = Some(callback);
         }
     }
 }
@@ -78,16 +84,11 @@ impl<P: Poller> EventLoop<P> {
 impl<P: Poller> Drop for EventLoop<P> {
     fn drop(&mut self) {
         self.poller.close();
-        for fd in &self.fds {
-            unsafe {
-                close(*fd);
-            }
-        }
     }
 }
 
 impl Event {
-    pub fn new(token: Token, read: bool, write: bool) -> Event {
-        Event { token, read, write }
+    pub fn new(fd: usize, interest: Interest) -> Event {
+        Event { interest, fd }
     }
 }
