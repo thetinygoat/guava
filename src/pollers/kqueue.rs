@@ -3,7 +3,7 @@ use crate::{
     poller::{Interest, Poller, PollerError},
 };
 use libc::{self, EV_ADD, EV_DELETE, EV_ENABLE, EVFILT_READ, EVFILT_WRITE, close, kevent, kqueue};
-use std::{mem, ptr};
+use std::{mem, ptr, time::Duration};
 
 pub struct KqueuePoller {
     fd: i32,
@@ -119,8 +119,21 @@ impl Poller for KqueuePoller {
     fn poll(
         &mut self,
         out: &mut Vec<Option<Event>>,
-        timeout: Option<std::time::Duration>,
+        timeout: Option<Duration>,
     ) -> Result<(), PollerError> {
+        let mut timeout_ts = libc::timespec {
+            tv_sec: 0 as libc::time_t,
+            tv_nsec: 0 as libc::c_long,
+        };
+        let timeout_ptr = if let Some(timeout) = timeout {
+            let secs = timeout.as_secs();
+            timeout_ts.tv_sec = secs as libc::time_t;
+            timeout_ts.tv_nsec = timeout.subsec_nanos() as libc::c_long;
+            &timeout_ts as *const libc::timespec
+        } else {
+            ptr::null()
+        };
+
         let nev = unsafe {
             kevent(
                 self.fd,
@@ -128,7 +141,7 @@ impl Poller for KqueuePoller {
                 self.change_list.len() as i32,
                 self.event_list.as_mut_ptr(),
                 self.event_list.len() as i32,
-                ptr::null(), // FIXME: pass the timeout
+                timeout_ptr,
             )
         };
 

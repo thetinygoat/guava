@@ -1,6 +1,6 @@
 use crate::poller::{Interest, Poller};
 use libc::close;
-use std::io;
+use std::{io, time::Duration};
 use thiserror::Error;
 
 #[derive(Debug, Clone, Copy)]
@@ -91,9 +91,15 @@ impl<P: Poller> EventLoop<P> {
     }
 
     pub fn run(&mut self) {
+        self.run_with_timeout(None);
+    }
+
+    pub fn run_with_timeout(&mut self, timeout: Option<Duration>) {
         loop {
             self.fired_io_events.fill(None);
-            self.poller.poll(&mut self.fired_io_events, None).unwrap();
+            self.poller
+                .poll(&mut self.fired_io_events, timeout)
+                .unwrap();
             for i in 0..self.set_size {
                 let maybe_event = self.fired_io_events[i];
                 if let Some(event) = maybe_event {
